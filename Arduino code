@@ -1,0 +1,195 @@
+/*
+ * Authors: Programmer Kevin Balbuena Montes and Erick Cabrera
+ * Project: IoT-Enhanced Irrigation: ESP32-Arduino Controlled Water Management System
+ * Purpose: Undergraduate research project for ESP32
+ * Mentor: Ahmed Hassebo, Electrical Engineering Technology Department
+ *
+
+ This program implements a smart irrigation system using ESP32 and Arduino,
+ * integrating sensors (soil moisture, water level, temperature, and humidity),
+ * and displays (I2C LCD and OLED) to monitor environmental conditions and
+ * control water distribution. The system includes a melody feature and an 
+ * animated water drop for enhanced user experience.
+*/
+
+
+#include <Wire.h>
+#include <LiquidCrystal_PCF8574.h> // I2C LCD library
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <DHT.h>
+
+// Pin Definitions
+#define waterSensorPin A3
+#define soilMoisturePin A0
+#define relayPin 4
+#define speakerPin 3
+#define DHTPin 2
+#define DHTTYPE DHT11
+
+// Initialize Sensors and Displays
+LiquidCrystal_PCF8574 lcd(0x27); // I2C LCD address
+Adafruit_SSD1306 oled(128, 64, &Wire, -1); // OLED I2C address 0x3C
+DHT dht(DHTPin, DHTTYPE);
+
+// Thresholds
+const int soilDryThreshold = 400;
+const int waterLowThreshold = 300;
+void setup() {
+  Serial.begin(9600);  // Communication with ESP32
+  dht.begin();
+  pinMode(waterSensorPin, INPUT);
+  pinMode(soilMoisturePin, INPUT);
+  pinMode(relayPin, OUTPUT);
+}
+
+void loop() {
+  if (Serial.available()) {
+    String command = Serial.readStringUntil('\n');
+
+    if (command == "GET_DATA") {
+      sendSensorData();  // Send sensor data to ESP32
+    } else if (command == "PUMP_ON") {
+      digitalWrite(relayPin, LOW);
+    } else if (command == "PUMP_OFF") {
+      digitalWrite(relayPin, HIGH);
+    }
+  }
+}
+
+// Send sensor readings to ESP32
+void sendSensorData() {
+  int soilMoisture = analogRead(soilMoisturePin);
+  int waterLevel = analogRead(waterSensorPin);
+  
+  Serial.print("0:"); Serial.println(soilMoisture);  // Soil moisture data
+  Serial.print("2:"); Serial.println(waterLevel);    // Water level data
+}
+
+void setup() {
+  // Initialize Serial Monitor
+  Serial.begin(9600);
+
+  // Initialize Sensors and Relay
+  pinMode(waterSensorPin, INPUT);
+  pinMode(soilMoisturePin, INPUT);
+  pinMode(relayPin, OUTPUT);
+  pinMode(speakerPin, OUTPUT);
+  dht.begin();
+
+  // Initialize LCD
+  lcd.begin(16, 2, Wire); // 16x2 LCD and I2C Wire interface
+  lcd.setBacklight(255); // Turn on backlight
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Initializing...");
+  delay(2000);
+  lcd.clear();
+
+  // Display Welcome Message on LCD
+  lcd.setCursor(0, 0);
+  lcd.print("Welcome to");
+  lcd.setCursor(0, 1);
+  lcd.print("ESP32-Arduino");
+  delay(2000);
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Controlled Water");
+  lcd.setCursor(0, 1);
+  lcd.print("Management Sys");
+  delay(2000);
+  lcd.clear();
+
+  // Initialize OLED
+  if (!oled.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println("OLED initialization failed!");
+    while (true);
+  }
+  oled.clearDisplay();
+  oled.setTextSize(1);
+  oled.setTextColor(SSD1306_WHITE);
+  oled.setCursor(0, 0);
+  oled.println("Irrigation System");
+  oled.display();
+  delay(2000);
+}
+
+void playCalmMelody() {
+  int melody[] = {262, 294, 330, 349, 392};
+  int duration = 300;
+  for (int i = 0; i < 5; i++) {
+    tone(speakerPin, melody[i], duration);
+    delay(duration + 50);
+  }
+  noTone(speakerPin);
+}
+
+void drawWaterDrop() {
+  oled.drawCircle(120, 10, 5, SSD1306_WHITE); // Water drop circle
+  oled.fillCircle(120, 15, 2, SSD1306_WHITE); // Small filled drop
+  oled.display();
+  delay(500);
+  oled.fillCircle(120, 10, 5, SSD1306_BLACK); // Clear drop
+  oled.fillCircle(120, 15, 2, SSD1306_BLACK); // Clear small filled drop
+  oled.display();
+  delay(500);
+}
+
+void loop() {
+  // Read Sensor Values
+  int waterLevel = analogRead(waterSensorPin);
+  int soilMoisture = analogRead(soilMoisturePin);
+  float humidity = dht.readHumidity();
+  float temperature = dht.readTemperature();
+
+  // Check for sensor errors
+  if (isnan(humidity) || isnan(temperature)) {
+    Serial.println("Failed to read from DHT sensor!");
+    return;
+  }
+
+  // Control Relay for Irrigation
+  bool pumpOn = (soilMoisture > soilDryThreshold && waterLevel > waterLowThreshold);
+  digitalWrite(relayPin, pumpOn ? LOW : HIGH);
+
+  // Update LCD: Show Pump and Soil Status Only
+  lcd.setCursor(0, 0);
+  lcd.print("Soil: ");
+  lcd.print(soilMoisture > soilDryThreshold ? "Dry" : "Wet");
+  lcd.setCursor(0, 1);
+  lcd.print("Pump: ");
+  lcd.print(pumpOn ? "ON " : "OFF");
+
+  // Update OLED: Display Data and Water Drop Animation if Pump is ON
+  oled.clearDisplay();
+  oled.setCursor(0, 0);
+  oled.print("Temp: ");
+  oled.print(temperature);
+  oled.println(" C");
+  oled.print("Humidity: ");
+  oled.print(humidity);
+  oled.println(" %");
+  oled.print("Soil: ");
+  oled.println(soilMoisture > soilDryThreshold ? "Dry" : "Wet");
+  oled.print("Water: ");
+  oled.println(waterLevel > waterLowThreshold ? "OK" : "Low");
+  oled.print("Pump: ");
+  oled.println(pumpOn ? "ON" : "OFF");
+  if (pumpOn) {
+    drawWaterDrop();
+  } else {
+    oled.display();
+  }
+
+  // Debugging Output
+  Serial.print("Water Level: ");
+  Serial.println(waterLevel);
+  Serial.print("Soil Moisture: ");
+  Serial.println(soilMoisture);
+  Serial.print("Humidity: ");
+  Serial.println(humidity);
+  Serial.print("Temperature: ");
+  Serial.println(temperature);
+
+  delay(2000); // Wait 2 seconds before next loop
+}
