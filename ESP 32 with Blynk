@@ -1,0 +1,55 @@
+
+//Include the library files
+#define BLYNK_PRINT Serial
+#include <WiFi.h>
+#include <WiFiClient.h>
+#include <BlynkSimpleEsp32.h>
+
+#define BLYNK_AUTH_TOKEN "5fvb3sdDJOSIhQgXVdsbrH-0HkdjSPlT"
+
+// WiFi credentials
+// WiFi credentials
+char ssid[] = "SpectrumSetup-85";  // Your WiFi SSID
+char pass[] = "writerharbor059";   // Your WiFi Password
+
+BlynkTimer timer;
+
+void setup() {
+  Serial.begin(9600);        // Serial communication with Arduino
+  Serial2.begin(9600);       // Serial2 communication for Arduino
+
+  Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass, "blynk.cloud", 80);
+  
+  // Timer to request and read data from Arduino every second
+  timer.setInterval(1000L, []() {
+    Serial2.println("GET_DATA");  // Request data from Arduino
+    if (Serial2.available()) {
+      String data = Serial2.readStringUntil('\n');
+      handleReceivedData(data);
+    }
+  });
+}
+
+// Handle incoming data from Arduino and forward to Blynk
+void handleReceivedData(String data) {
+  int separator = data.indexOf(':');
+  if (separator != -1) {
+    int pin = data.substring(0, separator).toInt();
+    int value = data.substring(separator + 1).toInt();
+    
+    if (pin == 0) Blynk.virtualWrite(V0, value);  // Soil moisture
+    if (pin == 2) Blynk.virtualWrite(V2, value);  // Water level
+  }
+}
+
+BLYNK_WRITE(V1) {
+  int pumpState = param.asInt();
+  Serial2.println(pumpState == 1 ? "PUMP_ON" : "PUMP_OFF");  // Send command to Arduino
+}
+
+void loop() {
+  Blynk.run();
+  timer.run();
+}
+
+
